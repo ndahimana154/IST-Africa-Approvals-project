@@ -34,12 +34,16 @@ const RegisterPage = () => {
     setLoading(true);
     setError(null);
     try {
+      console.log('Before');
       const { data } = await api.post('/auth/register/', form);
       login(data.access, data.user);
       navigate(landingByRole[data.user.role] || '/staff', { replace: true });
     } catch (err) {
+      console.log('Error', err);
       const detail = err.response?.data;
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2));
+      setError(
+        typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2)
+      );
     } finally {
       setLoading(false);
     }
@@ -52,17 +56,23 @@ const RegisterPage = () => {
           <p className="inline-flex rounded-full border border-white/20 px-4 py-1 text-xs uppercase tracking-wide text-white/60">
             Welcome to IST Africa Approvals
           </p>
-          <h1 className="text-4xl font-semibold leading-tight sm:text-5xl">Create your workspace credentials.</h1>
+          <h1 className="text-4xl font-semibold leading-tight sm:text-5xl">
+            Create your workspace credentials.
+          </h1>
           <p className="text-lg text-white/70">
-            Spin up an account, invite your team later, and start automating purchase requests, approvals, and finance
-            handoffs in minutes.
+            Spin up an account, invite your team later, and start automating
+            purchase requests, approvals, and finance handoffs in minutes.
           </p>
         </div>
 
         <div className="glass-panel flex-1 p-10">
           <h2 className="text-2xl font-semibold text-slate-900">Register</h2>
-          <p className="mt-2 text-sm text-slate-600">Already have an account?{' '}
-            <Link to="/login" className="font-semibold text-brand hover:text-brand-dark">
+          <p className="mt-2 text-sm text-slate-600">
+            Already have an account?{' '}
+            <Link
+              to="/login"
+              className="font-semibold text-brand hover:text-brand-dark"
+            >
               Log in
             </Link>
           </p>
@@ -137,7 +147,11 @@ const RegisterPage = () => {
                 {error}
               </div>
             )}
-            <button className="btn-primary w-full justify-center" type="submit" disabled={loading}>
+            <button
+              className="btn-primary w-full justify-center"
+              type="submit"
+              disabled={loading}
+            >
               {loading ? 'Creating account…' : 'Create account'}
             </button>
           </form>
@@ -148,4 +162,3 @@ const RegisterPage = () => {
 };
 
 export default RegisterPage;
-

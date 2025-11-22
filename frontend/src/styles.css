@@ -15,6 +15,37 @@ body {
   background: radial-gradient(circle at top, #dbeafe 0%, #f8fafc 45%, #f8fafc 100%);
 }
 
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    color: #e6eef8;
+    background-color: #071024;
+  }
+
+  body {
+    background: linear-gradient(180deg, #071024 0%, #071024 100%);
+  }
+
+  .glass-panel {
+    @apply bg-slate-900/70 border-slate-700/60 text-slate-100;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-800 border-slate-600 text-slate-200;
+  }
+}
+
+/* Improved focus styles for accessibility */
+*:focus {
+  outline: none;
+}
+
+:where(button, [role="button"], a):focus-visible {
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
+  border-radius: 8px;
+}
+
 .glass-panel {
   @apply bg-white/80 backdrop-blur-xl shadow-card rounded-3xl border border-white/60;
 }
@@ -42,4 +73,3 @@ body {
 .status-pill.rejected {
   @apply bg-rose-100 text-rose-700;
 }
-

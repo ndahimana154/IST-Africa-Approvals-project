@@ -23,3 +23,17 @@ api.interceptors.request.use((config) => {
 
 export default api;
 
+// helper to upload form data (files)
+export const upload = async (url, formData, config = {}) => {
+  return api.post(url, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    ...config,
+  });
+};
+
+// helper to download files as blob
+export const downloadFile = async (url, config = {}) => {
+  const response = await api.get(url, { responseType: 'blob', ...config });
+  return response.data;
+};
+

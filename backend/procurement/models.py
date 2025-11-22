@@ -49,6 +49,7 @@ class PurchaseRequest(models.Model):
     purchase_order_file = models.FileField(upload_to=po_upload_path, null=True, blank=True)
     purchase_order_metadata = models.JSONField(default=dict, blank=True)
     receipt = models.FileField(upload_to=receipt_upload_path, null=True, blank=True)
+    supplier = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -84,3 +85,20 @@ class Approval(models.Model):
 
     def __str__(self):
         return f"{self.purchase_request_id} - L{self.level} - {self.decision}"
+
+
+def attachment_upload_path(instance, filename):
+    return f"purchase_requests/{instance.purchase_request.id or 'new'}/attachments/{filename}"
+
+
+class Attachment(models.Model):
+    purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to=attachment_upload_path)
+    content_type = models.CharField(max_length=100, blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"Attachment {self.id} for PR {self.purchase_request_id}"

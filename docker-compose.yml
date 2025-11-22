@@ -1,4 +1,4 @@
-version: "3.9"
+version: '3.9'
 
 services:
   db:
@@ -10,13 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
+      - '5432:5432'
 
   backend:
     build:
@@ -35,7 +29,7 @@ services:
       - ./backend/media:/app/media
       - ./backend/static:/app/static
     ports:
-      - "8000:8000"
+      - '8000:8000'
 
   frontend:
     build:
@@ -45,8 +39,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "5173:4173"
+      - '5173:4173'
 
 volumes:
   postgres_data:
-

@@ -34,6 +34,8 @@ const RequestDetailPage = () => {
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [decisionComment, setDecisionComment] = useState('');
+  const [decisionLoading, setDecisionLoading] = useState(false);
 
   const fetchRequest = async () => {
     setLoading(true);
@@ -95,6 +97,20 @@ const RequestDetailPage = () => {
     return items;
   }, [id, request, user.role]);
 
+  const handleDecision = async (endpoint, decision) => {
+    setDecisionLoading(true);
+    setError(null);
+    try {
+      await api.patch(endpoint, { decision, comments: decisionComment });
+      setDecisionComment('');
+      await fetchRequest();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Unable to submit decision');
+    } finally {
+      setDecisionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="glass-panel p-8 text-center text-slate-500">
@@ -130,6 +146,9 @@ const RequestDetailPage = () => {
           </span>
         </div>
         <p className="text-lg text-slate-600">{request.description}</p>
+        {request.supplier && (
+          <p className="text-sm text-slate-500">Supplier: {request.supplier}</p>
+        )}
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl bg-slate-50 p-4">
             <p className="text-xs uppercase text-slate-500">Amount</p>
@@ -149,6 +168,69 @@ const RequestDetailPage = () => {
             <p className="text-2xl font-semibold text-slate-900">
               {request.current_level}
             </p>
+          </div>
+        </div>
+
+        {/* Attachments and files */}
+        <div className="glass-panel p-8">
+          <h3 className="text-2xl font-semibold text-slate-900">
+            Files & attachments
+          </h3>
+          <div className="mt-4 space-y-3">
+            {request.purchase_order_file_url && (
+              <a
+                className="btn-secondary inline-block"
+                href={request.purchase_order_file_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download PO
+              </a>
+            )}
+            {request.receipt_url && (
+              <a
+                className="btn-secondary inline-block"
+                href={request.receipt_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download receipt
+              </a>
+            )}
+            {request.proforma_url && (
+              <a
+                className="btn-secondary inline-block"
+                href={request.proforma_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download proforma
+              </a>
+            )}
+
+            {Array.isArray(request.attachments) &&
+              request.attachments.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  No attachments uploaded.
+                </p>
+              )}
+
+            {Array.isArray(request.attachments) &&
+              request.attachments.map((att) => (
+                <div key={att.id} className="flex items-center gap-3">
+                  <a
+                    className="text-sm text-brand"
+                    href={att.download_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Download attachment
+                  </a>
+                  <span className="text-xs text-slate-500">
+                    {att.content_type}
+                  </span>
+                </div>
+              ))}
           </div>
         </div>
       </div>
@@ -186,7 +268,7 @@ const RequestDetailPage = () => {
         <h3 className="text-2xl font-semibold text-slate-900">
           Approval timeline
         </h3>
-        {request.approvals.length === 0 ? (
+        {!Array.isArray(request.approvals) || request.approvals.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">
             No approvals recorded yet.
           </p>
@@ -217,6 +299,42 @@ const RequestDetailPage = () => {
           </ol>
         )}
       </div>
+
+      {user &&
+        user.role &&
+        (user.role === 'approver_level_1' ||
+          user.role === 'approver_level_2') &&
+        request.status === 'PENDING' && (
+          <div className="glass-panel p-6">
+            <h4 className="text-lg font-semibold">Approve / Reject</h4>
+            <textarea
+              placeholder="Add comments (optional)"
+              value={decisionComment}
+              onChange={(e) => setDecisionComment(e.target.value)}
+              className="mt-3 w-full rounded-2xl border border-slate-200 p-3"
+            />
+            <div className="mt-4 flex gap-3">
+              <button
+                className="btn-secondary"
+                onClick={() =>
+                  handleDecision(`/requests/${id}/reject/`, 'REJECTED')
+                }
+                disabled={decisionLoading}
+              >
+                {decisionLoading ? 'Processing…' : 'Reject'}
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() =>
+                  handleDecision(`/requests/${id}/approve/`, 'APPROVED')
+                }
+                disabled={decisionLoading}
+              >
+                {decisionLoading ? 'Processing…' : 'Approve'}
+              </button>
+            </div>
+          </div>
+        )}
 
       {message && (
         <div className="glass-panel p-6">
