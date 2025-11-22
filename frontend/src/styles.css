@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #0f172a;
+  background-color: #f8fafc;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #dbeafe 0%, #f8fafc 45%, #f8fafc 100%);
+}
+
+.glass-panel {
+  @apply bg-white/80 backdrop-blur-xl shadow-card rounded-3xl border border-white/60;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 font-semibold text-white transition hover:bg-brand-dark focus-visible:outline-brand focus-visible:ring-2 focus-visible:ring-brand/40;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-6 py-3 font-semibold text-slate-700 transition hover:border-brand hover:text-brand focus-visible:outline-brand focus-visible:ring-2 focus-visible:ring-brand/40;
+}
+
+.status-pill {
+  @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide;
+}
+
+.status-pill.pending {
+  @apply bg-amber-100 text-amber-700;
+}
+
+.status-pill.approved {
+  @apply bg-emerald-100 text-emerald-700;
+}
+
+.status-pill.rejected {
+  @apply bg-rose-100 text-rose-700;
+}
+

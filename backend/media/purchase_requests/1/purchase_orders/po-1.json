@@ -1,0 +1,8 @@
+{
+  "purchase_request_id": 1,
+  "title": "Buy C",
+  "amount": "10000.00",
+  "vendor": "Unknown Vendor",
+  "items": [],
+  "total_estimate": "10000.00"
+}
