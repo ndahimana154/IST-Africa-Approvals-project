@@ -2,47 +2,64 @@ name: Backend CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: ist_user
-          POSTGRES_DB: ist_approvals
-          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: procure_to_pay
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U ist_user -d ist_approvals -h localhost" --health-interval=10s --health-timeout=5s --health-retries=5
+          --health-cmd="pg_isready -U postgres -d procure_to_pay -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
       redis:
         image: redis:7
         ports:
           - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
-      - name: Run migrations
+
+      - name: Apply migrations
+        working-directory: backend
         env:
-          POSTGRES_DB: ist_approvals
-          POSTGRES_USER: ist_user
-          POSTGRES_PASSWORD: changeme
-          POSTGRES_HOST: 127.0.0.1
+          POSTGRES_DB: procure_to_pay
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST: localhost
         run: |
-          python backend/manage.py migrate --noinput
+          python manage.py migrate --noinput
+
       - name: Run tests
+        working-directory: backend
         run: |
           pytest -q

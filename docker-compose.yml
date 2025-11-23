@@ -1,6 +1,10 @@
+version: '3.9'
+
 services:
   db:
     image: postgres:16-alpine
+    container_name: istafricaapprovalsproject-db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-procure_to_pay}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -13,6 +17,8 @@ services:
   backend:
     build:
       context: ./backend
+    container_name: istafricaapprovalsproject-backend
+    restart: unless-stopped
     command: >
       sh -c "
         python manage.py migrate &&
@@ -34,8 +40,10 @@ services:
   frontend:
     build:
       context: ./frontend
-    environment:
-      VITE_API_BASE_URL: http://backend:8000/api
+    container_name: istafricaapprovalsproject-frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/env.example
     depends_on:
       - backend
     ports:
