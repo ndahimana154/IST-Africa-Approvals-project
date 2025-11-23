@@ -68,6 +68,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     approvals = ApprovalSerializer(many=True, read_only=True)
     attachments = serializers.SerializerMethodField()
+    finance_comments = serializers.SerializerMethodField()
     purchase_order_file_url = serializers.SerializerMethodField()
     proforma_url = serializers.SerializerMethodField()
     receipt_url = serializers.SerializerMethodField()
@@ -81,11 +82,26 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             result.append({
                 'id': a.id,
                 'file': a.file.url if a.file else None,
+                'external_url': a.external_url,
                 'content_type': a.content_type,
                 'uploaded_at': a.uploaded_at,
                 'download_url': f"/api/requests/{obj.id}/download-attachment/{a.id}/",
             })
         return result
+
+    def get_finance_comments(self, obj):
+        comments_qs = getattr(obj, 'finance_comments', None)
+        if comments_qs is None:
+            return []
+        return [
+            {
+                'id': c.id,
+                'user': c.user.username,
+                'comment': c.comment,
+                'created_at': c.created_at,
+            }
+            for c in comments_qs.all()
+        ]
 
     def get_purchase_order_file_url(self, obj):
         if obj.purchase_order_file:
@@ -124,6 +140,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             "purchase_order_metadata",
             "supplier",
             "attachments",
+            "finance_comments",
             "approvals",
         )
         read_only_fields = (
@@ -140,6 +157,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             "purchase_order_metadata",
             "approvals",
             "attachments",
+            "finance_comments",
             "proforma_url",
             "receipt_url",
             "purchase_order_file_url",
@@ -188,8 +206,9 @@ class FileUploadSerializer(serializers.Serializer):
         return value
 
 
-class ReceiptUploadSerializer(FileUploadSerializer):
-    pass
+class ReceiptUrlSerializer(serializers.Serializer):
+    external_url = serializers.URLField()
+
 
 
 class AttachmentUploadSerializer(serializers.Serializer):

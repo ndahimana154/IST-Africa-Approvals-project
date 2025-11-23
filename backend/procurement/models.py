@@ -48,7 +48,7 @@ class PurchaseRequest(models.Model):
     proforma = models.FileField(upload_to=proforma_upload_path, null=True, blank=True)
     purchase_order_file = models.FileField(upload_to=po_upload_path, null=True, blank=True)
     purchase_order_metadata = models.JSONField(default=dict, blank=True)
-    receipt = models.FileField(upload_to=receipt_upload_path, null=True, blank=True)
+    receipt = models.URLField(blank=True, null=True, )
     supplier = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
@@ -93,7 +93,9 @@ def attachment_upload_path(instance, filename):
 
 class Attachment(models.Model):
     purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='attachments')
-    file = models.FileField(upload_to=attachment_upload_path)
+    file = models.FileField(upload_to=attachment_upload_path, null=True, blank=True)
+    # allow storing external URLs (e.g., Cloudinary) for client-side uploads
+    external_url = models.URLField(null=True, blank=True)
     content_type = models.CharField(max_length=100, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
@@ -102,3 +104,16 @@ class Attachment(models.Model):
 
     def __str__(self):
         return f"Attachment {self.id} for PR {self.purchase_request_id}"
+
+
+class FinanceComment(models.Model):
+    purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='finance_comments')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    comment = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"FinanceComment {self.id} on PR {self.purchase_request_id} by {self.user_id}"

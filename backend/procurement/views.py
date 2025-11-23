@@ -8,7 +8,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import Approval, PurchaseRequest, Attachment
+from .models import Approval, PurchaseRequest, Attachment, FinanceComment
 from .permissions import IsApprover, IsFinance, IsStaff
 from .serializers import (
     ApprovalDecisionSerializer,
@@ -16,7 +16,7 @@ from .serializers import (
     PurchaseRequestCreateSerializer,
     PurchaseRequestSerializer,
     PurchaseRequestUpdateSerializer,
-    ReceiptUploadSerializer,
+    ReceiptUrlSerializer,
     AttachmentUploadSerializer,
     RegisterSerializer,
 )
@@ -25,7 +25,9 @@ from .services.workflows import apply_approval, ensure_staff_owner, handle_recei
 import mimetypes
 import os
 import boto3
-from django.http import FileResponse, Http404, HttpResponseRedirect
+import requests
+import io
+from django.http import FileResponse, Http404, HttpResponseRedirect, StreamingHttpResponse
 from django.conf import settings
 
 User = get_user_model()
@@ -152,6 +154,28 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
     def upload_proforma(self, request, pk=None):
         purchase_request = self.get_object()
         ensure_staff_owner(purchase_request, request.user)
+        # Accept either uploaded file or an external URL (Cloudinary)
+        external_url = request.data.get('external_url')
+        if external_url:
+            # fetch the file bytes and create a file-like object with a name attribute
+            try:
+                resp = requests.get(external_url, timeout=10)
+                resp.raise_for_status()
+                bio = io.BytesIO(resp.content)
+                # derive filename
+                fname = external_url.split('/')[-1].split('?')[0] or 'proforma.pdf'
+                bio.name = fname
+                extracted = ai.extract_proforma_data(bio)
+                # save downloaded content into PR.proforma
+                from django.core.files.base import ContentFile
+
+                purchase_request.proforma.save(fname, ContentFile(resp.content), save=False)
+                purchase_request.purchase_order_metadata = extracted
+                purchase_request.save()
+                return Response({"message": "Proforma uploaded (external)", "extracted": extracted}, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         serializer = FileUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         purchase_request.proforma = serializer.validated_data["file"]
@@ -168,14 +192,27 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
     )
     def submit_receipt(self, request, pk=None):
         purchase_request = self.get_object()
+
+        # Permissions
         if request.user.role not in {User.Role.STAFF, User.Role.FINANCE}:
             return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+
         if request.user.role == User.Role.STAFF:
             ensure_staff_owner(purchase_request, request.user)
-        serializer = ReceiptUploadSerializer(data=request.data)
+
+        # Validate the external_url
+        serializer = ReceiptUrlSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        result = handle_receipt_upload(purchase_request, serializer.validated_data["file"])
-        return Response(result, status=status.HTTP_200_OK)
+
+        # Save the URL directly
+        purchase_request.receipt = serializer.validated_data["external_url"]
+        purchase_request.save()
+
+        return Response({
+            "receipt_url": purchase_request.receipt,
+            "message": "Receipt URL saved successfully"
+        }, status=status.HTTP_200_OK)
+
 
     @action(
         detail=True,
@@ -186,24 +223,50 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
     def upload_attachments(self, request, pk=None):
         purchase_request = self.get_object()
         ensure_staff_owner(purchase_request, request.user)
-        serializer = AttachmentUploadSerializer(data=request.data)
-        # For file lists, DRF requires passing files via request.FILES
-        # Build files list from request.FILES.getlist('files') if present
+        # Accept either uploaded files (multipart) or external URLs (Cloudinary)
         files = request.FILES.getlist('files') or []
-        if not files:
-            return Response({"detail": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
-        # Validate using serializer
-        serializer.initial_data['files'] = files
-        serializer.is_valid(raise_exception=True)
+        external_urls = request.data.get('external_urls') or []
         created = []
-        for f in serializer.validated_data['files']:
-            att = Attachment.objects.create(purchase_request=purchase_request, file=f, content_type=getattr(f, 'content_type', ''))
+
+        # handle uploaded files
+        for f in files:
+            att = Attachment.objects.create(
+                purchase_request=purchase_request,
+                file=f,
+                content_type=getattr(f, 'content_type', ''),
+            )
             created.append({
                 'id': att.id,
                 'file': att.file.url if att.file else None,
+                'external_url': att.external_url,
                 'content_type': att.content_type,
                 'uploaded_at': att.uploaded_at,
             })
+
+        # handle external URLs (client uploaded to Cloudinary)
+        for url in external_urls:
+            # try to fetch headers/content-type
+            content_type = ''
+            try:
+                head = requests.head(url, timeout=5)
+                content_type = head.headers.get('content-type', '')
+            except Exception:
+                content_type = ''
+            att = Attachment.objects.create(
+                purchase_request=purchase_request,
+                external_url=url,
+                content_type=content_type,
+            )
+            created.append({
+                'id': att.id,
+                'file': att.file.url if att.file else None,
+                'external_url': att.external_url,
+                'content_type': att.content_type,
+                'uploaded_at': att.uploaded_at,
+            })
+
+        if not created:
+            return Response({"detail": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'attachments': created}, status=status.HTTP_201_CREATED)
 
     def _has_file_access(self, user, purchase_request: PurchaseRequest):
@@ -306,6 +369,21 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
             raise Http404
         if not self._has_file_access(request.user, pr):
             return Response({'detail': 'Not allowed'}, status=status.HTTP_403_FORBIDDEN)
+        # If attachment uses external_url (e.g., Cloudinary), proxy the file so we can set attachment headers
+        if att.external_url:
+            try:
+                resp = requests.get(att.external_url, stream=True, timeout=15)
+                resp.raise_for_status()
+            except Exception:
+                # fallback to redirect if we cannot proxy
+                return HttpResponseRedirect(att.external_url)
+
+            # determine filename
+            filename = os.path.basename(att.external_url.split('?')[0]) or f"attachment-{att.id}"
+            content_type = resp.headers.get('content-type', 'application/octet-stream')
+            streaming = StreamingHttpResponse(resp.iter_content(chunk_size=8192), content_type=content_type)
+            streaming['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return streaming
         if getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None):
             key = att.file.name
             client = boto3.client(
@@ -341,6 +419,16 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
             comments=serializer.validated_data.get("comments", ""),
         )
         return Response(PurchaseRequestSerializer(purchase_request).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="finance-comment", permission_classes=[permissions.IsAuthenticated, IsFinance])
+    def add_finance_comment(self, request, pk=None):
+        pr = self.get_object()
+        # finance may add comments regardless of PR status
+        comment = request.data.get('comment')
+        if not comment:
+            return Response({"detail": "Comment is required"}, status=status.HTTP_400_BAD_REQUEST)
+        fc = FinanceComment.objects.create(purchase_request=pr, user=request.user, comment=comment)
+        return Response({"id": fc.id, "comment": fc.comment, "user": request.user.username, "created_at": fc.created_at}, status=status.HTTP_201_CREATED)
 
     @action(
         detail=True,

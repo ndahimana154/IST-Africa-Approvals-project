@@ -37,3 +37,43 @@ export const downloadFile = async (url, config = {}) => {
   return response.data;
 };
 
+// Upload a single file directly to Cloudinary (unsigned preset)
+export const uploadToCloudinary = (file, { onProgress } = {}) => {
+  const preset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+  const name = import.meta.env.VITE_CLOUDINARY_NAME;
+  if (!preset || !name) throw new Error('Cloudinary env not configured');
+  const endpoint = `https://api.cloudinary.com/v1_1/${name}/auto/upload`;
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', preset);
+
+    xhr.open('POST', endpoint);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && typeof onProgress === 'function') {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const json = JSON.parse(xhr.responseText);
+          resolve(json.secure_url || json.url);
+        } catch (err) {
+          reject(err);
+        }
+      } else {
+        reject(new Error(xhr.responseText || 'Cloudinary upload failed'));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.send(fd);
+  });
+};
+

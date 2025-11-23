@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import dayjs from 'dayjs';
 import { useParams } from 'react-router-dom';
-import api from '../api/client.js';
+import api, { uploadToCloudinary } from '../api/client.js';
 import { useAuth } from '../hooks/useAuth.js';
+import DocumentViewer from '../components/DocumentViewer.jsx';
 
 const amountFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -36,12 +38,15 @@ const RequestDetailPage = () => {
   const [uploading, setUploading] = useState(false);
   const [decisionComment, setDecisionComment] = useState('');
   const [decisionLoading, setDecisionLoading] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState(null);
+  const [viewerTitle, setViewerTitle] = useState(null);
 
   const fetchRequest = async () => {
     setLoading(true);
     setError(null);
     try {
       const { data } = await api.get(`/requests/${id}/`);
+      console.log('AA', data);
       setRequest(data);
     } catch (err) {
       setError(err.response?.data?.detail || 'Unable to fetch request');
@@ -73,20 +78,42 @@ const RequestDetailPage = () => {
     }
   };
 
+  const uploadViaCloudinary = async (endpoint, file) => {
+    if (!file) return;
+    setUploading(true);
+    setMessage(null);
+    try {
+      const url = await uploadToCloudinary(file);
+      const { data } = await api.post(endpoint, { external_url: url });
+      setMessage(JSON.stringify(data, null, 2));
+      await fetchRequest();
+    } catch (err) {
+      setError(
+        err.message || err.response?.data?.detail || 'Unable to upload file'
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openViewer = (url, title) => {
+    if (!url) return;
+    setViewerUrl(url);
+    setViewerTitle(title || 'Document');
+  };
+
+  const closeViewer = () => {
+    setViewerUrl(null);
+    setViewerTitle(null);
+  };
+
   const uploads = useMemo(() => {
     if (!request || user.role !== 'staff') {
       return [];
     }
     const items = [];
-    if (request.status === 'PENDING') {
-      items.push({
-        title: 'Upload proforma',
-        description:
-          'Drop a PDF or image. AI will auto-extract supplier, totals, and PO metadata.',
-        endpoint: `/requests/${id}/upload-proforma/`,
-      });
-    }
-    if (['PENDING'].includes(request.status)) {
+
+    if (['PENDING'].includes(request.status) && !request.receipt) {
       items.push({
         title: 'Upload receipt',
         description:
@@ -171,41 +198,30 @@ const RequestDetailPage = () => {
           </div>
         </div>
 
-        {/* Attachments and files */}
         <div className="glass-panel p-8">
           <h3 className="text-2xl font-semibold text-slate-900">
             Files & attachments
           </h3>
           <div className="mt-4 space-y-3">
             {request.purchase_order_file_url && (
-              <a
+              <button
+                type="button"
                 className="btn-secondary inline-block"
-                href={request.purchase_order_file_url}
-                target="_blank"
-                rel="noreferrer"
+                onClick={() =>
+                  openViewer(request.purchase_order_file_url, 'Purchase Order')
+                }
               >
-                Download PO
-              </a>
+                View PO
+              </button>
             )}
-            {request.receipt_url && (
-              <a
+            {request.receipt && (
+              <button
+                type="button"
                 className="btn-secondary inline-block"
-                href={request.receipt_url}
-                target="_blank"
-                rel="noreferrer"
+                onClick={() => openViewer(request.receipt, 'Receipt')}
               >
-                Download receipt
-              </a>
-            )}
-            {request.proforma_url && (
-              <a
-                className="btn-secondary inline-block"
-                href={request.proforma_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Download proforma
-              </a>
+                View receipt
+              </button>
             )}
 
             {Array.isArray(request.attachments) &&
@@ -218,14 +234,18 @@ const RequestDetailPage = () => {
             {Array.isArray(request.attachments) &&
               request.attachments.map((att) => (
                 <div key={att.id} className="flex items-center gap-3">
-                  <a
+                  <button
+                    type="button"
                     className="text-sm text-brand"
-                    href={att.download_url}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={() =>
+                      openViewer(
+                        att.external_url || att.file || att.download_url,
+                        'Attachment'
+                      )
+                    }
                   >
-                    Download attachment
-                  </a>
+                    Open attachment
+                  </button>
                   <span className="text-xs text-slate-500">
                     {att.content_type}
                   </span>
@@ -246,10 +266,15 @@ const RequestDetailPage = () => {
                 type="file"
                 accept=".pdf,image/*"
                 className="hidden"
-                onChange={(event) =>
-                  event.target.files?.length &&
-                  uploadFile(item.endpoint, event.target.files[0])
-                }
+                onChange={(event) => {
+                  const f = event.target.files?.[0];
+                  // prefer Cloudinary when configured
+                  if (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET && f) {
+                    uploadViaCloudinary(item.endpoint, f);
+                  } else if (f) {
+                    uploadFile(item.endpoint, f);
+                  }
+                }}
                 disabled={uploading}
               />
               <p className="text-sm uppercase tracking-wide text-slate-500">
@@ -274,28 +299,51 @@ const RequestDetailPage = () => {
           </p>
         ) : (
           <ol className="mt-6 space-y-4">
-            {request.approvals.map((approval) => (
-              <li key={approval.id} className="rounded-2xl bg-slate-50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-900">
-                    Level {approval.level} ·{' '}
-                    {approval.approver?.username || 'Pending'}
-                  </p>
-                  <span
-                    className={`status-pill ${(
-                      approval.decision || ''
-                    ).toLowerCase()}`}
-                  >
-                    {approval.decision}
-                  </span>
-                </div>
-                {approval.comments && (
-                  <p className="mt-2 text-sm text-slate-600">
-                    {approval.comments}
-                  </p>
-                )}
-              </li>
-            ))}
+            {request.approvals.map((approval) => {
+              const formattedDate = approval.decided_at
+                ? dayjs(approval.decided_at).format('DD MMM YYYY, HH:mm')
+                : null;
+
+              return (
+                <li
+                  key={approval.id}
+                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        Level {approval.level} ·{' '}
+                        {approval.approver?.username || 'Pending Approver'}
+                      </p>
+
+                      {formattedDate && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {formattedDate}
+                        </p>
+                      )}
+                    </div>
+
+                    <span
+                      className={`px-3 py-1 text-xs font-medium rounded-full ${
+                        approval.decision === 'APPROVED'
+                          ? 'bg-green-100 text-green-700'
+                          : approval.decision === 'REJECTED'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                      }`}
+                    >
+                      {approval.decision || 'PENDING'}
+                    </span>
+                  </div>
+
+                  {approval.comments && (
+                    <p className="mt-3 text-sm text-slate-700 leading-relaxed">
+                      {approval.comments}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         )}
       </div>
@@ -351,6 +399,13 @@ const RequestDetailPage = () => {
         <div className="rounded-3xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </div>
+      )}
+      {viewerUrl && (
+        <DocumentViewer
+          url={viewerUrl}
+          title={viewerTitle}
+          onClose={closeViewer}
+        />
       )}
     </section>
   );

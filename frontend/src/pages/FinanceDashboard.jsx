@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import api from '../api/client.js';
+import api, { uploadToCloudinary } from '../api/client.js';
 import { jsPDF } from 'jspdf';
+import toast, { Toaster } from 'react-hot-toast';
+import DocumentViewer from '../components/DocumentViewer.jsx';
 
 const FinanceDashboard = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [uploadingId, setUploadingId] = useState(null);
+  const [viewerUrl, setViewerUrl] = useState(null);
+  const [viewerTitle, setViewerTitle] = useState(null);
 
   const fetchApproved = async () => {
     setLoading(true);
@@ -30,18 +34,46 @@ const FinanceDashboard = () => {
 
   const uploadReceipt = async (id, file) => {
     if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
     setUploadingId(id);
     try {
-      await api.post(`/requests/${id}/submit-receipt/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const url = await uploadToCloudinary(file);
+      console.log(url);
+      await api.post(`/requests/${id}/submit-receipt/`, {
+        external_url: url,
       });
+      toast.success('Receipt uploaded successfully');
       await fetchApproved();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Unable to upload receipt');
+      toast.error('Unable to upload receipt');
+      console.log(err);
+      setError(
+        err.message || err.response?.data?.detail || 'Unable to upload receipt'
+      );
     } finally {
       setUploadingId(null);
+    }
+  };
+
+  const openViewer = (url, title) => {
+    if (!url) return;
+    setViewerUrl(url);
+    setViewerTitle(title || 'Document');
+  };
+
+  const closeViewer = () => {
+    setViewerUrl(null);
+    setViewerTitle(null);
+  };
+
+  const addFinanceComment = async (id, comment) => {
+    if (!comment) return;
+    try {
+      await api.post(`/requests/${id}/finance-comment/`, { comment });
+      toast.success('Comment added successfully');
+      await fetchApproved();
+    } catch (err) {
+      toast.error(error.message || 'Unable to add comment');
+      setError(err.response?.data?.detail || 'Unable to add comment');
     }
   };
 
@@ -65,6 +97,7 @@ const FinanceDashboard = () => {
 
   return (
     <section className="space-y-6">
+      <Toaster position="top-right" />
       <div className="glass-panel flex flex-wrap items-center justify-between gap-4 p-8">
         <div>
           <p className="text-sm uppercase tracking-wide text-slate-500">
@@ -135,37 +168,63 @@ const FinanceDashboard = () => {
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase text-slate-500">Receipt</p>
-                  {request.receipt_url ? (
-                    <a
+                  {request.receipt || request.receipt_url ? (
+                    <button
                       className="btn-secondary mt-3 inline-flex"
-                      href={request.receipt_url}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={() => openViewer(request.receipt, 'Receipt')}
                     >
                       View receipt
-                    </a>
+                    </button>
                   ) : (
-                    <label className="mt-2 flex cursor-pointer flex-col gap-2 rounded-2xl border-2 border-dashed border-slate-300 p-4 text-sm text-slate-600">
-                      <input
-                        type="file"
-                        className="hidden"
-                        onChange={(event) =>
-                          uploadReceipt(request.id, event.target.files?.[0])
-                        }
-                        disabled={uploadingId === request.id}
-                      />
-                      <span>
-                        {uploadingId === request.id
-                          ? 'Uploading…'
-                          : 'Upload receipt'}
-                      </span>
-                    </label>
+                    <div className="mt-2">
+                      <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border-2 border-dashed border-slate-300 p-4 text-sm text-slate-600">
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(event) =>
+                            uploadReceipt(request.id, event.target.files?.[0])
+                          }
+                          disabled={uploadingId === request.id}
+                        />
+                        <span>
+                          {uploadingId === request.id
+                            ? 'Uploading…'
+                            : 'Upload receipt'}
+                        </span>
+                      </label>
+                      <div className="mt-3">
+                        <input
+                          type="text"
+                          placeholder="Add finance comment (optional)"
+                          className="w-full rounded-md border p-2"
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              await addFinanceComment(
+                                request.id,
+                                e.target.value
+                              );
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                        <p className="text-xs text-slate-500 mt-1">
+                          Press Enter to save comment
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
             </article>
           ))}
         </div>
+      )}
+      {viewerUrl && (
+        <DocumentViewer
+          url={viewerUrl}
+          title={viewerTitle}
+          onClose={closeViewer}
+        />
       )}
     </section>
   );

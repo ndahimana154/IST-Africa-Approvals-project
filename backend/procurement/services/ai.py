@@ -3,6 +3,12 @@ import json
 import re
 from decimal import Decimal
 from typing import Dict, List
+from django.conf import settings
+
+try:
+    import requests
+except Exception:  # pragma: no cover
+    requests = None
 
 try:
     import pdfplumber
@@ -68,12 +74,75 @@ def extract_proforma_data(file_obj) -> Dict:
     items = re.findall(r"(?:Item|Product)[:\\s]+(.+)", text)
     totals = _parse_currency_candidates(text)
 
-    return {
+    result = {
         "vendor": vendor.group(1).strip() if vendor else "Unknown Vendor",
         "items": [item.strip() for item in items][:10],
         "total_estimate": str(totals[-1]) if totals else "0.00",
         "raw_text": text[:5000],
     }
+
+    # Optionally refine using LLM extraction
+    try:
+        refined = llm_refine_extraction(text)
+        if refined.get('vendor'):
+            result['vendor'] = refined['vendor']
+        if refined.get('items'):
+            result['items'] = refined['items']
+        if refined.get('total_estimate'):
+            result['total_estimate'] = refined['total_estimate']
+    except Exception:
+        pass
+
+    return result
+
+
+def llm_refine_extraction(raw_text: str) -> Dict:
+    """
+    Optionally call an LLM (OpenAI-compatible) to refine extracted fields.
+    Controlled via settings: set `USE_LLM_EXTRACT = True` and `OPENAI_API_KEY`.
+    Returns a dict with possible keys: vendor, items, total_estimate
+    """
+    if not getattr(settings, 'USE_LLM_EXTRACT', False):
+        return {}
+    api_key = getattr(settings, 'OPENAI_API_KEY', None)
+    if not api_key or requests is None:
+        return {}
+
+    prompt = (
+        "Extract vendor name, list of items (as short descriptions), and total amount "
+        "from the following document text. Return a JSON object with keys: vendor, items, total_estimate.\n\n" + raw_text
+    )
+
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+                "max_tokens": 500,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        text = data['choices'][0]['message']['content']
+        # try to parse JSON from the assistant
+        j = re.search(r"\{[\s\S]*\}", text)
+        if j:
+            parsed = json.loads(j.group(0))
+            return {
+                'vendor': parsed.get('vendor'),
+                'items': parsed.get('items'),
+                'total_estimate': parsed.get('total_estimate'),
+            }
+    except Exception:
+        return {}
+    return {}
 
 
 def generate_purchase_order_metadata(purchase_request, vendor_data=None) -> Dict:

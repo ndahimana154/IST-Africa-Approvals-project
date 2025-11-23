@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
+import { useState } from 'react';
+import DocumentViewer from './DocumentViewer.jsx';
 
 const amountFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -15,6 +17,16 @@ const statusMeta = {
 
 const RequestCard = ({ request }) => {
   const status = statusMeta[request.status] || statusMeta.PENDING;
+  const [viewerUrl, setViewerUrl] = useState(null);
+  const [viewerTitle, setViewerTitle] = useState(null);
+
+  const openFirstAttachment = () => {
+    const att = Array.isArray(request.attachments) && request.attachments[0];
+    if (!att) return (window.location.href = `/staff/request/${request.id}`);
+    const url = att.external_url || att.file || att.download_url;
+    setViewerUrl(url);
+    setViewerTitle('Attachment');
+  };
 
   return (
     <article className="glass-panel flex flex-col gap-4 rounded-3xl p-6">
@@ -49,9 +61,21 @@ const RequestCard = ({ request }) => {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">{status.label}</p>
-        <Link className="btn-secondary" to={`/staff/request/${request.id}`}>
-          View details
-        </Link>
+        <div className="flex items-center gap-2">
+          <button className="btn-secondary" onClick={openFirstAttachment}>
+            Preview
+          </button>
+          <Link className="btn-secondary" to={`/staff/request/${request.id}`}>
+            View details
+          </Link>
+        </div>
+        {viewerUrl && (
+          <DocumentViewer
+            url={viewerUrl}
+            title={viewerTitle}
+            onClose={() => setViewerUrl(null)}
+          />
+        )}
       </div>
     </article>
   );

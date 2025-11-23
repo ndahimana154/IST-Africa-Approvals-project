@@ -254,6 +254,10 @@ if AWS_STORAGE_BUCKET_NAME and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
     # optional extras
     AWS_S3_SIGNATURE_VERSION = os.environ.get('AWS_S3_SIGNATURE_VERSION', 's3v4')
 
+# Optional LLM extraction settings
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+USE_LLM_EXTRACT = os.environ.get('USE_LLM_EXTRACT', 'False') == 'True'
+
 
 # Logging
 LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'INFO')
