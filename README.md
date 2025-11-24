@@ -33,15 +33,18 @@ Full-stack procurement workflow covering request creation, multi-level approvals
 - CI workflows for backend and frontend in `.github/workflows/`.
 
 ### Getting Started (Local)
-
 1. **Backend**
    ```bash
    cd backend
-   cp env.example .env
+   cp .env.example .env            # copy the example env and edit values
    python3 -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
+   # set up the database and run migrations
    python manage.py migrate
+   # optional: create a superuser or use the seed command to create demo roles
    python manage.py createsuperuser
+   # OR use provided seed command which creates groups and an admin user:
+   # python manage.py seed_data
    python manage.py runserver 0.0.0.0:8000
    ```
 2. **Frontend**
@@ -85,3 +88,31 @@ pytest
 ### Limitations
 
 - Package installation and migrations were not executed in this environment due to sandbox restrictions; run the commands above locally before first launch.
+
+### Important notes about accounts & roles
+
+- New user sign-ups through the public `auth/register/` endpoint are created with the `staff` role by default. If you want to create users with `approver` or `finance` roles, you must assign those roles via the Django admin interface (`/admin/`) or create them programmatically.
+- The repository includes a management command `python manage.py seed_data` which will create the basic groups (`staff`, `approver`, `finance`, `admin`) and a demo superuser `admin` with password `adminpass` if that username does not already exist. Change that password immediately after first login.
+
+### Cloudinary (optional client-side uploads)
+
+- The frontend supports direct uploads to Cloudinary using an unsigned upload preset. To enable, create a `.env` file in `frontend/` with these values:
+
+```
+VITE_CLOUDINARY_UPLOAD_PRESET=ks-e-commerce
+VITE_CLOUDINARY_NAME=dpu6ljn5c
+VITE_API_BASE_URL=http://localhost:8000/api
+```
+
+- When configured, the client will upload attachments and receipts directly to Cloudinary, then the backend stores the returned `external_url` and uses it for previews and downloads. If you do not set these values, the frontend falls back to multipart uploads to the backend.
+
+### File previews and downloads
+
+- The frontend includes an in-app `DocumentViewer` (PDF/image preview) that opens proformas, receipts, POs and attachments. Previewing depends on the remote host's CORS settings. For reliable downloads the backend proxies external attachments and streams them with `Content-Disposition` headers.
+
+### Production recommendations
+
+- Use a persistent message broker (Redis/RabbitMQ) and result backend for Celery in production.
+- Use S3 (or other cloud object storage) for media with proper CORS and signed URLs.
+- Secure Cloudinary upload presets or use a signed upload flow if you handle sensitive documents.
+

@@ -1,4 +1,5 @@
-FROM node:20-alpine
+# Step 1 — Build the Vite frontend
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
@@ -6,7 +7,14 @@ COPY package.json package-lock.json ./
 RUN npm install
 
 COPY . .
+RUN npm run build
 
-EXPOSE 5173
+# Step 2 — Serve with Nginx
+FROM nginx:alpine
 
-CMD ["npm", "run", "dev", "--", "--host"]
+# Copy built files from Vite's dist/ folder
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
