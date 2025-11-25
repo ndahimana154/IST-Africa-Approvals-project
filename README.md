@@ -2,6 +2,40 @@
 
 Full-stack procurement workflow covering request creation, multi-level approvals, finance validations, and AI-assisted document processing.
 
+### Deplyed Version
+
+- URL: http://138.197.42.126
+- DJANGO ADMIN url: http://138.197.42.126:8000/admin
+
+### Current users:
+
+#### For the django admin:
+
+- Username: admin
+- password: admin
+
+#### For the Frontend:
+
+1. Staff:
+
+- username: staff_user
+- password: password@123
+
+2. Approver1:
+
+- username: approver1
+- password: password@123
+
+3. Approver2:
+   -username: approver2
+
+- password: password@123
+
+4. Finance:
+
+- username: finance
+- password: password@123
+
 ### Features
 
 - Django REST API with JWT auth and role-based permissions (staff, approvers, finance)
@@ -110,9 +144,3 @@ VITE_API_BASE_URL=
 ### File previews and downloads
 
 - The frontend includes an in-app `DocumentViewer` (PDF/image preview) that opens receipts, POs and attachments. Previewing depends on the remote host's CORS settings. For reliable downloads the backend proxies external attachments and streams them with `Content-Disposition` headers.
-
-### Production recommendations
-
-- Use a persistent message broker (Redis/RabbitMQ) and result backend for Celery in production.
-- Use S3 (or other cloud object storage) for media with proper CORS and signed URLs.
-- Secure Cloudinary upload presets or use a signed upload flow if you handle sensitive documents.
