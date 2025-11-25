@@ -34,12 +34,10 @@ const RegisterPage = () => {
     setLoading(true);
     setError(null);
     try {
-      console.log('Before');
       const { data } = await api.post('/auth/register/', form);
       login(data.access, data.user);
       navigate(landingByRole[data.user.role] || '/staff', { replace: true });
     } catch (err) {
-      console.log('Error', err);
       setError(formatError(err));
     } finally {
       setLoading(false);

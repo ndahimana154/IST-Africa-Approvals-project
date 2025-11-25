@@ -30,7 +30,6 @@ const LoginPage = () => {
       login(data.access, data.user);
       navigate(roleLanding[data.user.role] || '/staff', { replace: true });
     } catch (err) {
-      console.log('login data:', err);
       setError(
         formatError(err) || 'Unable to login. Please check your credentials.'
       );

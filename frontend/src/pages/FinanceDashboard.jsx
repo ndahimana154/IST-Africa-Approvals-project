@@ -44,7 +44,6 @@ const FinanceDashboard = () => {
     setUploadingId(id);
     try {
       const url = await uploadToCloudinary(file);
-      console.log(url);
       await api.post(`/requests/${id}/submit-receipt/`, {
         external_url: url,
       });
@@ -52,7 +51,6 @@ const FinanceDashboard = () => {
       await fetchApproved();
     } catch (err) {
       toast.error('Unable to upload receipt');
-      console.log(err);
       setError(
         err.message || err.response?.data?.detail || 'Unable to upload receipt'
       );
