@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Toaster, toast } from 'react-hot-toast';
-import api, { uploadToCloudinary } from '../api/client.js';
+import api, { formatError, uploadToCloudinary } from '../api/client.js';
 
 const CreateRequestPage = () => {
   const navigate = useNavigate();
@@ -80,7 +80,7 @@ const CreateRequestPage = () => {
       }, 2500);
     } catch (err) {
       toast.error(err.message || 'Failed to create request');
-      setError(err.response?.data || 'Unable to create request');
+      setError(formatError(err) || 'Unable to create request');
     } finally {
       setSubmitting(false);
     }

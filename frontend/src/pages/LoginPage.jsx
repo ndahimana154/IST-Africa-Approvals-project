@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import api from '../api/client.js';
+import api, { formatError } from '../api/client.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 const roleLanding = {
@@ -30,7 +30,10 @@ const LoginPage = () => {
       login(data.access, data.user);
       navigate(roleLanding[data.user.role] || '/staff', { replace: true });
     } catch (err) {
-      setError(err.response?.data?.detail || 'Unable to login');
+      console.log('login data:', err);
+      setError(
+        formatError(err) || 'Unable to login. Please check your credentials.'
+      );
     } finally {
       setLoading(false);
     }
@@ -44,20 +47,29 @@ const LoginPage = () => {
             Secure workspace login
           </p>
           <h1 className="text-4xl font-semibold leading-tight sm:text-5xl">
-            Reconnect with your approvals, finance workflows, and AI powered document processing.
+            Reconnect with your approvals, finance workflows, and AI powered
+            document processing.
           </h1>
           <ul className="space-y-4 text-white/70">
             <li>• View status timelines with live updates.</li>
-            <li>• Upload proformas, receipts, and purchase orders in one interface.</li>
+            <li>
+              • Upload proformas, receipts, and purchase orders in one
+              interface.
+            </li>
             <li>• Collaborate with finance and approvers instantly.</li>
           </ul>
         </div>
 
         <div className="glass-panel bg-white p-10 text-slate-900">
-          <h2 className="text-2xl font-semibold text-slate-900">Welcome back</h2>
+          <h2 className="text-2xl font-semibold text-slate-900">
+            Welcome back
+          </h2>
           <p className="mt-2 text-sm text-slate-600">
             No account yet?{' '}
-            <Link to="/register" className="font-semibold text-brand hover:text-brand-dark">
+            <Link
+              to="/register"
+              className="font-semibold text-brand hover:text-brand-dark"
+            >
               Create one
             </Link>
           </p>
@@ -90,7 +102,11 @@ const LoginPage = () => {
                 {error}
               </div>
             )}
-            <button className="btn-primary w-full justify-center" type="submit" disabled={loading}>
+            <button
+              className="btn-primary w-full justify-center"
+              type="submit"
+              disabled={loading}
+            >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
@@ -101,4 +117,3 @@ const LoginPage = () => {
 };
 
 export default LoginPage;
-

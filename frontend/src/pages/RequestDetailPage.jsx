@@ -40,14 +40,28 @@ const RequestDetailPage = () => {
   const [decisionLoading, setDecisionLoading] = useState(false);
   const [viewerUrl, setViewerUrl] = useState(null);
   const [viewerTitle, setViewerTitle] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    amount: '',
+    supplier: '',
+  });
+  const [editLoading, setEditLoading] = useState(false);
 
   const fetchRequest = async () => {
     setLoading(true);
     setError(null);
     try {
       const { data } = await api.get(`/requests/${id}/`);
-      console.log('AA', data);
       setRequest(data);
+      // Initialize edit form with request data
+      setEditForm({
+        title: data.title || '',
+        description: data.description || '',
+        amount: data.amount || '',
+        supplier: data.supplier || '',
+      });
     } catch (err) {
       setError(err.response?.data?.detail || 'Unable to fetch request');
     } finally {
@@ -138,6 +152,21 @@ const RequestDetailPage = () => {
     }
   };
 
+  const handleEditSubmit = async () => {
+    setEditLoading(true);
+    setError(null);
+    try {
+      await api.patch(`/requests/${id}/`, editForm);
+      setMessage('Request updated successfully');
+      setIsEditing(false);
+      await fetchRequest();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Unable to update request');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="glass-panel p-8 text-center text-slate-500">
@@ -168,9 +197,20 @@ const RequestDetailPage = () => {
               {request.title}
             </h2>
           </div>
-          <span className={`status-pill ${status.badge}`}>
-            {request.status}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className={`status-pill ${status.badge}`}>
+              {request.status}
+            </span>
+            {user.role === 'staff' &&
+              ['PENDING', 'REJECTED'].includes(request.status) && (
+                <button
+                  className="btn-secondary"
+                  onClick={() => setIsEditing(!isEditing)}
+                >
+                  {isEditing ? 'Cancel' : 'Edit'}
+                </button>
+              )}
+          </div>
         </div>
         <p className="text-lg text-slate-600">{request.description}</p>
         {request.supplier && (
@@ -197,6 +237,86 @@ const RequestDetailPage = () => {
             </p>
           </div>
         </div>
+
+        {isEditing && (
+          <div className="space-y-4 rounded-2xl border-2 border-amber-200 bg-amber-50 p-6">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Edit request
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={editForm.title}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, title: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, description: e.target.value })
+                  }
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    value={editForm.amount}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, amount: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Supplier
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.supplier}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, supplier: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  className="btn-primary"
+                  onClick={handleEditSubmit}
+                  disabled={editLoading}
+                >
+                  {editLoading ? 'Saving…' : 'Save changes'}
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={() => setIsEditing(false)}
+                  disabled={editLoading}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="glass-panel p-8">
           <h3 className="text-2xl font-semibold text-slate-900">

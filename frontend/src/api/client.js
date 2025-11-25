@@ -77,3 +77,43 @@ export const uploadToCloudinary = (file, { onProgress } = {}) => {
   });
 };
 
+export const formatError = (err) => {
+  const data = err.response?.data;
+
+  if (!data) return "Something went wrong.";
+
+  // Backend wraps everything inside { error: {...} }
+  const wrapped = data.error || data;
+
+  /**
+   * POSSIBLE SHAPES:
+   *
+   * 1) { error: { detail: "Message" } }
+   * 2) { error: { detail: { field: ["Message"] } } }
+   * 3) { error: { detail: { detail: "Message" } } }  <-- Your login case
+   */
+
+  const detail = wrapped.detail;
+
+  // Case 1: direct string
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  // Case 3: nested: detail.detail
+  if (detail?.detail && typeof detail.detail === "string") {
+    return detail.detail;
+  }
+
+  // Case 2: field error: { field: ["Message"] }
+  if (typeof detail === "object") {
+    const key = Object.keys(detail)[0];
+    const value = detail[key];
+
+    if (Array.isArray(value) && typeof value[0] === "string") {
+      return value[0];
+    }
+  }
+
+  return "Something went wrong. Please try again.";
+};

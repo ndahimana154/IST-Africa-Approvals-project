@@ -7,6 +7,7 @@ const StaffDashboard = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('pending');
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -59,6 +60,18 @@ const StaffDashboard = () => {
     ];
   }, [requests]);
 
+  const filteredRequests = useMemo(() => {
+    if (!Array.isArray(requests)) return [];
+    if (activeTab === 'pending') {
+      return requests.filter((req) => req.status === 'PENDING');
+    } else if (activeTab === 'rejected') {
+      return requests.filter((req) => req.status === 'REJECTED');
+    } else if (activeTab === 'approved') {
+      return requests.filter((req) => req.status === 'APPROVED');
+    }
+    return [];
+  }, [requests, activeTab]);
+
   return (
     <section className="space-y-6">
       <div className="glass-panel flex flex-wrap items-center justify-between gap-6 p-8">
@@ -96,26 +109,64 @@ const StaffDashboard = () => {
         </div>
       )}
 
-      {loading ? (
-        <div className="glass-panel p-8 text-center text-slate-500">
-          Loading requests…
-        </div>
-      ) : requests.length === 0 ? (
-        <div className="glass-panel p-8 text-center text-slate-500">
-          No requests found.
-        </div>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2">
-          {requests.map((request) => (
-            <RequestCard
-              key={request.id}
-              request={{
-                ...request,
-                images: request.images || [],
-                comments: request.comments || [],
-              }}
-            />
-          ))}
+      {!loading && (
+        <div className="glass-panel">
+          <div className="border-b border-slate-200">
+            <div className="flex gap-1 p-4">
+              <button
+                onClick={() => setActiveTab('pending')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'pending'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Pending
+              </button>
+              <button
+                onClick={() => setActiveTab('rejected')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'rejected'
+                    ? 'bg-rose-100 text-rose-700'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Rejected
+              </button>
+              <button
+                onClick={() => setActiveTab('approved')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'approved'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Approved
+              </button>
+            </div>
+          </div>{' '}
+          {loading ? (
+            <div className="p-8 text-center text-slate-500">
+              Loading requests…
+            </div>
+          ) : filteredRequests.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              No {activeTab} requests found.
+            </div>
+          ) : (
+            <div className="grid gap-6 p-6 md:grid-cols-2">
+              {filteredRequests.map((request) => (
+                <RequestCard
+                  key={request.id}
+                  request={{
+                    ...request,
+                    images: request.images || [],
+                    comments: request.comments || [],
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

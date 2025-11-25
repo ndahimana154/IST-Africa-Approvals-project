@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import api from '../api/client.js';
+import api, { formatError } from '../api/client.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 const landingByRole = {
@@ -40,10 +40,7 @@ const RegisterPage = () => {
       navigate(landingByRole[data.user.role] || '/staff', { replace: true });
     } catch (err) {
       console.log('Error', err);
-      const detail = err.response?.data;
-      setError(
-        typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2)
-      );
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }

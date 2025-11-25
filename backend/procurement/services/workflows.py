@@ -15,8 +15,9 @@ MAX_LEVEL = max(ROLE_BY_LEVEL.keys())
 def ensure_staff_owner(purchase_request: PurchaseRequest, user: User):
     if purchase_request.created_by != user:
         raise PermissionDenied("You may only modify your own requests.")
-    if purchase_request.status != PurchaseRequest.Status.PENDING:
-        raise ValidationError("Only pending requests can be modified.")
+    # Allow edit when PENDING or when REJECTED (can be resubmitted)
+    if purchase_request.status not in {PurchaseRequest.Status.PENDING, PurchaseRequest.Status.REJECTED}:
+        raise ValidationError("Only pending or rejected requests can be modified.")
 
 
 @transaction.atomic

@@ -90,10 +90,13 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
         )
         user = self.request.user
         if user.role == User.Role.STAFF:
-            return qs.filter(created_by=user)
+            # Staff can see their own PENDING, REJECTED, and APPROVED requests
+            return qs.filter(created_by=user, status__in=[PurchaseRequest.Status.PENDING, PurchaseRequest.Status.REJECTED, PurchaseRequest.Status.APPROVED])
         if user.role == User.Role.FINANCE:
-            return qs.filter(status=PurchaseRequest.Status.APPROVED)
+            # Finance can see all approved, rejected, and pending (read-only) requests
+            return qs.filter(status__in=[PurchaseRequest.Status.APPROVED, PurchaseRequest.Status.REJECTED, PurchaseRequest.Status.PENDING])
         if user.role in {User.Role.APPROVER_LEVEL_1, User.Role.APPROVER_LEVEL_2}:
+            # Approvers can see all requests for review
             return qs
         return qs.none()
 
@@ -144,6 +147,52 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
         queryset = PurchaseRequest.objects.filter(status=PurchaseRequest.Status.APPROVED)
         serializer = PurchaseRequestSerializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="rejected",
+        permission_classes=[permissions.IsAuthenticated, IsFinance],
+    )
+    def rejected(self, request):
+        """Finance can view rejected requests."""
+        queryset = PurchaseRequest.objects.filter(status=PurchaseRequest.Status.REJECTED)
+        serializer = PurchaseRequestSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="finance-pending",
+        permission_classes=[permissions.IsAuthenticated, IsFinance],
+    )
+    def finance_pending(self, request):
+        """Finance can view pending requests (read-only)."""
+        queryset = PurchaseRequest.objects.filter(status=PurchaseRequest.Status.PENDING)
+        serializer = PurchaseRequestSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="my-approvals",
+        permission_classes=[permissions.IsAuthenticated, IsApprover],
+    )
+    def my_approvals(self, request):
+        """Approvers can view their own approval history."""
+        approver = request.user
+        approvals = Approval.objects.filter(approver=approver).select_related("purchase_request", "approver").order_by("-decided_at")
+        result = []
+        for approval in approvals:
+            result.append({
+                "id": approval.id,
+                "request": PurchaseRequestSerializer(approval.purchase_request, context={"request": request}).data,
+                "decision": approval.decision,
+                "comments": approval.comments,
+                "level": approval.level,
+                "decided_at": approval.decided_at,
+            })
+        return Response(result)
 
     @action(
         detail=True,

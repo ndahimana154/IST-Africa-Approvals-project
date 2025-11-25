@@ -33,6 +33,7 @@ Full-stack procurement workflow covering request creation, multi-level approvals
 - CI workflows for backend and frontend in `.github/workflows/`.
 
 ### Getting Started (Local)
+
 1. **Backend**
    ```bash
    cd backend
@@ -99,20 +100,19 @@ pytest
 - The frontend supports direct uploads to Cloudinary using an unsigned upload preset. To enable, create a `.env` file in `frontend/` with these values:
 
 ```
-VITE_CLOUDINARY_UPLOAD_PRESET=ks-e-commerce
-VITE_CLOUDINARY_NAME=dpu6ljn5c
-VITE_API_BASE_URL=http://localhost:8000/api
+VITE_CLOUDINARY_UPLOAD_PRESET=
+VITE_CLOUDINARY_NAME=
+VITE_API_BASE_URL=
 ```
 
 - When configured, the client will upload attachments and receipts directly to Cloudinary, then the backend stores the returned `external_url` and uses it for previews and downloads. If you do not set these values, the frontend falls back to multipart uploads to the backend.
 
 ### File previews and downloads
 
-- The frontend includes an in-app `DocumentViewer` (PDF/image preview) that opens proformas, receipts, POs and attachments. Previewing depends on the remote host's CORS settings. For reliable downloads the backend proxies external attachments and streams them with `Content-Disposition` headers.
+- The frontend includes an in-app `DocumentViewer` (PDF/image preview) that opens receipts, POs and attachments. Previewing depends on the remote host's CORS settings. For reliable downloads the backend proxies external attachments and streams them with `Content-Disposition` headers.
 
 ### Production recommendations
 
 - Use a persistent message broker (Redis/RabbitMQ) and result backend for Celery in production.
 - Use S3 (or other cloud object storage) for media with proper CORS and signed URLs.
 - Secure Cloudinary upload presets or use a signed upload flow if you handle sensitive documents.
-
