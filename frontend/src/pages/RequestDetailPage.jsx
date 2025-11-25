@@ -75,36 +75,45 @@ const RequestDetailPage = () => {
 
   const uploadFile = async (endpoint, fileField) => {
     if (!fileField) return;
-    const formData = new FormData();
-    formData.append('file', fileField);
     setUploading(true);
     setMessage(null);
     try {
-      const { data } = await api.post(endpoint, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setMessage(JSON.stringify(data, null, 2));
-      await fetchRequest();
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Unable to upload file');
-    } finally {
-      setUploading(false);
-    }
-  };
+      console.log('[UPLOAD DEBUG] Starting file upload for:', fileField.name);
 
-  const uploadViaCloudinary = async (endpoint, file) => {
-    if (!file) return;
-    setUploading(true);
-    setMessage(null);
-    try {
-      const url = await uploadToCloudinary(file);
-      const { data } = await api.post(endpoint, { external_url: url });
+      // Upload to Cloudinary first
+      const url = await uploadToCloudinary(fileField);
+      console.log('[UPLOAD DEBUG] Cloudinary upload successful, URL:', url);
+
+      // Send the URL to the backend
+      const payload = { external_url: url };
+      console.log(
+        '[UPLOAD DEBUG] Sending payload to backend:',
+        JSON.stringify(payload)
+      );
+      console.log('[UPLOAD DEBUG] Endpoint:', endpoint);
+
+      const { data } = await api.post(endpoint, payload);
+      console.log('[UPLOAD DEBUG] Backend response:', data);
+
       setMessage(JSON.stringify(data, null, 2));
       await fetchRequest();
     } catch (err) {
-      setError(
-        err.message || err.response?.data?.detail || 'Unable to upload file'
+      console.error('[UPLOAD ERROR] Upload failed:', err);
+      console.error(
+        '[UPLOAD ERROR] Full error object:',
+        JSON.stringify(err, null, 2)
       );
+      console.error('[UPLOAD ERROR] Error response:', err.response?.data);
+      console.error('[UPLOAD ERROR] Error status:', err.response?.status);
+      console.error('[UPLOAD ERROR] Error message:', err.message);
+
+      const errorDetail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        'Unable to upload file';
+
+      setError(errorDetail);
     } finally {
       setUploading(false);
     }
@@ -126,6 +135,15 @@ const RequestDetailPage = () => {
       return [];
     }
     const items = [];
+
+    if (['PENDING'].includes(request.status) && !request.proforma) {
+      items.push({
+        title: 'Upload proforma',
+        description:
+          'Share the proforma so approvers can review supplier details and pricing.',
+        endpoint: `/requests/${id}/upload-proforma/`,
+      });
+    }
 
     if (['PENDING'].includes(request.status) && !request.receipt) {
       items.push({
@@ -166,6 +184,7 @@ const RequestDetailPage = () => {
       setEditLoading(false);
     }
   };
+  console.log('REQUEST', request);
 
   if (loading) {
     return (
@@ -323,6 +342,15 @@ const RequestDetailPage = () => {
             Files & attachments
           </h3>
           <div className="mt-4 space-y-3">
+            {request.proforma && (
+              <button
+                type="button"
+                className="btn-secondary inline-block"
+                onClick={() => openViewer(request.proforma, 'Proforma')}
+              >
+                View proforma
+              </button>
+            )}
             {request.purchase_order_file_url && (
               <button
                 type="button"
@@ -388,10 +416,7 @@ const RequestDetailPage = () => {
                 className="hidden"
                 onChange={(event) => {
                   const f = event.target.files?.[0];
-                  // prefer Cloudinary when configured
-                  if (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET && f) {
-                    uploadViaCloudinary(item.endpoint, f);
-                  } else if (f) {
+                  if (f) {
                     uploadFile(item.endpoint, f);
                   }
                 }}
@@ -468,6 +493,45 @@ const RequestDetailPage = () => {
         )}
       </div>
 
+      {Array.isArray(request.finance_comments) &&
+        request.finance_comments.length > 0 && (
+          <div className="glass-panel p-8">
+            <h3 className="text-2xl font-semibold text-slate-900">
+              Comments & Notes
+            </h3>
+            <div className="mt-6 space-y-4">
+              {request.finance_comments.map((comment) => {
+                const formattedDate = comment.created_at
+                  ? dayjs(comment.created_at).format('DD MMM YYYY, HH:mm')
+                  : null;
+
+                return (
+                  <div
+                    key={comment.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {comment.user || 'Unknown User'}
+                        </p>
+                        {formattedDate && (
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {formattedDate}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-700 leading-relaxed">
+                      {comment.comment}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
       {user &&
         user.role &&
         (user.role === 'approver_level_1' ||
@@ -503,6 +567,74 @@ const RequestDetailPage = () => {
             </div>
           </div>
         )}
+
+      {user && user.role === 'finance' && (
+        <div className="glass-panel p-6">
+          <h4 className="text-lg font-semibold">Add Finance Comment</h4>
+          <textarea
+            placeholder="Add your comment or note"
+            value={decisionComment}
+            onChange={(e) => setDecisionComment(e.target.value)}
+            className="mt-3 w-full rounded-2xl border border-slate-200 p-3"
+          />
+          <button
+            className="btn-primary mt-4"
+            onClick={async () => {
+              setDecisionLoading(true);
+              setError(null);
+              try {
+                const { data } = await api.post(
+                  `/requests/${id}/finance-comment/`,
+                  { comment: decisionComment }
+                );
+                setRequest(data);
+                setDecisionComment('');
+              } catch (err) {
+                setError(err.response?.data?.detail || 'Unable to add comment');
+              } finally {
+                setDecisionLoading(false);
+              }
+            }}
+            disabled={decisionLoading || !decisionComment.trim()}
+          >
+            {decisionLoading ? 'Adding…' : 'Add Comment'}
+          </button>
+        </div>
+      )}
+
+      {user && user.role === 'staff' && (
+        <div className="glass-panel p-6">
+          <h4 className="text-lg font-semibold">Add Note</h4>
+          <textarea
+            placeholder="Add a note to this request"
+            value={decisionComment}
+            onChange={(e) => setDecisionComment(e.target.value)}
+            className="mt-3 w-full rounded-2xl border border-slate-200 p-3"
+          />
+          <button
+            className="btn-primary mt-4"
+            onClick={async () => {
+              setDecisionLoading(true);
+              setError(null);
+              try {
+                const { data } = await api.post(
+                  `/requests/${id}/add-comment/`,
+                  { comment: decisionComment }
+                );
+                setRequest(data);
+                setDecisionComment('');
+              } catch (err) {
+                setError(err.response?.data?.detail || 'Unable to add note');
+              } finally {
+                setDecisionLoading(false);
+              }
+            }}
+            disabled={decisionLoading || !decisionComment.trim()}
+          >
+            {decisionLoading ? 'Adding…' : 'Add Note'}
+          </button>
+        </div>
+      )}
 
       {message && (
         <div className="glass-panel p-6">

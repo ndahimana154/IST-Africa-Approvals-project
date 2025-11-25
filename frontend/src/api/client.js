@@ -1,7 +1,15 @@
+
 import axios from 'axios';
+// 401 handler: logout and redirect
+const STORAGE_KEY = 'p2p_auth';
+function logoutAndRedirect() {
+  localStorage.removeItem(STORAGE_KEY);
+  // Use window.location to force reload and redirect
+  window.location.href = '/login';
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-const STORAGE_KEY = 'p2p_auth';
+
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -18,8 +26,25 @@ api.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
   }
+
+  // Don't force Content-Type for FormData - let the browser/axios handle it
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
+
   return config;
 });
+
+// Add a response interceptor to handle 401 errors (token expired/invalid)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      logoutAndRedirect();
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;
 
@@ -44,6 +69,8 @@ export const uploadToCloudinary = (file, { onProgress } = {}) => {
   if (!preset || !name) throw new Error('Cloudinary env not configured');
   const endpoint = `https://api.cloudinary.com/v1_1/${name}/auto/upload`;
 
+  console.log('[CLOUDINARY DEBUG] Starting upload for:', file.name, 'Size:', file.size, 'Type:', file.type);
+
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const fd = new FormData();
@@ -63,11 +90,16 @@ export const uploadToCloudinary = (file, { onProgress } = {}) => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const json = JSON.parse(xhr.responseText);
-          resolve(json.secure_url || json.url);
+          const url = json.secure_url || json.url;
+          console.log('[CLOUDINARY DEBUG] Upload successful, URL:', url);
+          resolve(url);
         } catch (err) {
+          console.error('[CLOUDINARY ERROR] JSON parse error:', err);
           reject(err);
         }
       } else {
+        console.error('[CLOUDINARY ERROR] Upload failed with status:', xhr.status);
+        console.error('[CLOUDINARY ERROR] Response:', xhr.responseText);
         reject(new Error(xhr.responseText || 'Cloudinary upload failed'));
       }
     };

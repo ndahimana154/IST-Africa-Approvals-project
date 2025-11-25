@@ -206,6 +206,29 @@ class FileUploadSerializer(serializers.Serializer):
         return value
 
 
+class ProformaUploadSerializer(serializers.Serializer):
+    """Accepts either a file upload or an external URL (e.g., Cloudinary)"""
+    file = serializers.FileField(required=False, allow_null=True)
+    external_url = serializers.URLField(required=False, allow_null=True)
+
+    def validate(self, data):
+        file = data.get('file')
+        external_url = data.get('external_url')
+        
+        if not file and not external_url:
+            raise serializers.ValidationError("Either 'file' or 'external_url' must be provided.")
+        
+        if file and external_url:
+            raise serializers.ValidationError("Provide either 'file' or 'external_url', not both.")
+        
+        return data
+
+    def validate_file(self, value):
+        if value and value.size > 25 * 1024 * 1024:
+            raise serializers.ValidationError("File too large (max 25 MB).")
+        return value
+
+
 class ReceiptUrlSerializer(serializers.Serializer):
     external_url = serializers.URLField()
 
@@ -228,4 +251,5 @@ class AttachmentUploadSerializer(serializers.Serializer):
 class ApprovalDecisionSerializer(serializers.Serializer):
     decision = serializers.ChoiceField(choices=Approval.Decision.choices)
     comments = serializers.CharField(required=False, allow_blank=True)
+
 

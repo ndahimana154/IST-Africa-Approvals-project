@@ -39,7 +39,15 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen flex flex-col justify-center items-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="mb-6">
+        <Link
+          to="/"
+          className="text-blue-600 hover:underline font-semibold text-lg"
+        >
+          &larr; Back to Home
+        </Link>
+      </div>
       <div className="mx-auto grid min-h-screen max-w-6xl gap-10 px-6 py-12 lg:grid-cols-2 lg:items-center lg:gap-16">
         <div className="space-y-8">
           <p className="inline-flex rounded-full border border-white/20 px-4 py-1 text-xs uppercase tracking-wide text-white/60">

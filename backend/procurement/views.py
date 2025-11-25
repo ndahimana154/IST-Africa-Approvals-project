@@ -7,12 +7,14 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+import logging
 
 from .models import Approval, PurchaseRequest, Attachment, FinanceComment
 from .permissions import IsApprover, IsFinance, IsStaff
 from .serializers import (
     ApprovalDecisionSerializer,
     FileUploadSerializer,
+    ProformaUploadSerializer,
     PurchaseRequestCreateSerializer,
     PurchaseRequestSerializer,
     PurchaseRequestUpdateSerializer,
@@ -22,11 +24,15 @@ from .serializers import (
 )
 from .services import ai
 from .services.workflows import apply_approval, ensure_staff_owner, handle_receipt_upload
+from .utils.ocr import extract_proforma_data
 import mimetypes
 import os
 import boto3
 import requests
 import io
+
+# Setup logging
+logger = logging.getLogger(__name__)
 from django.http import FileResponse, Http404, HttpResponseRedirect, StreamingHttpResponse
 from django.conf import settings
 
@@ -84,9 +90,16 @@ class RegisterView(APIView):
 class PurchaseRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
+    def dispatch(self, request, *args, **kwargs):
+        print(f"\n[VIEWSET DEBUG] dispatch() called")
+        print(f"[VIEWSET DEBUG] path: {request.path}")
+        print(f"[VIEWSET DEBUG] method: {request.method}")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_queryset(self):
         qs = PurchaseRequest.objects.select_related("created_by").prefetch_related(
-            Prefetch("approvals", queryset=Approval.objects.select_related("approver"))
+            Prefetch("approvals", queryset=Approval.objects.select_related("approver")),
+            Prefetch("finance_comments", queryset=FinanceComment.objects.select_related("user"))
         )
         user = self.request.user
         if user.role == User.Role.STAFF:
@@ -197,45 +210,6 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        url_path="upload-proforma",
-        permission_classes=[permissions.IsAuthenticated, IsStaff],
-    )
-    def upload_proforma(self, request, pk=None):
-        purchase_request = self.get_object()
-        ensure_staff_owner(purchase_request, request.user)
-        # Accept either uploaded file or an external URL (Cloudinary)
-        external_url = request.data.get('external_url')
-        if external_url:
-            # fetch the file bytes and create a file-like object with a name attribute
-            try:
-                resp = requests.get(external_url, timeout=10)
-                resp.raise_for_status()
-                bio = io.BytesIO(resp.content)
-                # derive filename
-                fname = external_url.split('/')[-1].split('?')[0] or 'proforma.pdf'
-                bio.name = fname
-                extracted = ai.extract_proforma_data(bio)
-                # save downloaded content into PR.proforma
-                from django.core.files.base import ContentFile
-
-                purchase_request.proforma.save(fname, ContentFile(resp.content), save=False)
-                purchase_request.purchase_order_metadata = extracted
-                purchase_request.save()
-                return Response({"message": "Proforma uploaded (external)", "extracted": extracted}, status=status.HTTP_200_OK)
-            except Exception as e:
-                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        serializer = FileUploadSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        purchase_request.proforma = serializer.validated_data["file"]
-        extracted = ai.extract_proforma_data(serializer.validated_data["file"])
-        purchase_request.purchase_order_metadata = extracted
-        purchase_request.save()
-        return Response({"message": "Proforma uploaded", "extracted": extracted}, status=status.HTTP_200_OK)
-
-    @action(
-        detail=True,
-        methods=["post"],
         url_path="submit-receipt",
         permission_classes=[permissions.IsAuthenticated],
     )
@@ -317,6 +291,75 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
         if not created:
             return Response({"detail": "No files provided"}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'attachments': created}, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="upload-proforma",
+        permission_classes=[permissions.IsAuthenticated, IsStaff],
+    )
+    def upload_proforma(self, request, pk=None):
+        """
+        Upload and process proforma file (PDF or image).
+        Accepts external URL (Cloudinary) via JSON: {"external_url": "https://..."}
+        Extracts text and structured data (vendor, items, payment terms, grand total).
+        Only staff (request creator) can upload while request is PENDING.
+        """
+        purchase_request = self.get_object()
+        ensure_staff_owner(purchase_request, request.user)
+        
+        # Validate input - accepts external_url
+        serializer = ProformaUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        external_url = serializer.validated_data.get('external_url')
+        
+        if not external_url:
+            return Response(
+                {"detail": "external_url is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Download the file from external URL
+        try:
+            resp = requests.get(external_url, timeout=10)
+            resp.raise_for_status()
+            file_content = resp.content
+        except Exception as e:
+            return Response(
+                {"detail": f"Failed to download from external URL: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create a file-like object for extraction
+        from io import BytesIO
+        file_obj = BytesIO(file_content)
+        fname = external_url.split('/')[-1].split('?')[0] or 'proforma.pdf'
+        file_obj.name = fname
+        
+        # Extract and parse proforma data
+        result = extract_proforma_data(file_obj)
+        
+        if result['status'] == 'error':
+            return Response(
+                {"detail": result['message']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Save the URL and extracted data to model
+        purchase_request.proforma = external_url
+        purchase_request.proforma_extracted_data = result['extracted_data']
+        purchase_request.save(update_fields=['proforma', 'proforma_extracted_data'])
+        
+        return Response({
+            "message": "Proforma uploaded and processed successfully",
+            "proforma_url": purchase_request.proforma,
+            "extracted_data": result['extracted_data']
+        }, status=status.HTTP_200_OK)
 
     def _has_file_access(self, user, purchase_request: PurchaseRequest):
         # Staff may only access their own files
@@ -477,7 +520,26 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
         if not comment:
             return Response({"detail": "Comment is required"}, status=status.HTTP_400_BAD_REQUEST)
         fc = FinanceComment.objects.create(purchase_request=pr, user=request.user, comment=comment)
-        return Response({"id": fc.id, "comment": fc.comment, "user": request.user.username, "created_at": fc.created_at}, status=status.HTTP_201_CREATED)
+        # Return the updated request with the new comment
+        return Response(PurchaseRequestSerializer(pr, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="add-comment", permission_classes=[permissions.IsAuthenticated])
+    def add_comment(self, request, pk=None):
+        pr = self.get_object()
+        # Staff and Finance can add comments
+        if request.user.role not in {User.Role.STAFF, User.Role.FINANCE}:
+            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Staff can only comment on their own requests
+        if request.user.role == User.Role.STAFF:
+            ensure_staff_owner(pr, request.user)
+        
+        comment = request.data.get('comment')
+        if not comment:
+            return Response({"detail": "Comment is required"}, status=status.HTTP_400_BAD_REQUEST)
+        fc = FinanceComment.objects.create(purchase_request=pr, user=request.user, comment=comment)
+        # Return the updated request with the new comment
+        return Response(PurchaseRequestSerializer(pr, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
     @action(
         detail=True,
